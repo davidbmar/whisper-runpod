@@ -1,0 +1,46 @@
+FROM fedirz/faster-whisper-server:latest-cuda
+
+# Set noninteractive installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update and install essential packages
+RUN apt-get update && \
+    apt-get install -y git vim python3 python3-pip sudo curl wget unzip net-tools
+
+# Create a symlink from python3 to python (CRITICAL FIX)
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# Install AWS CLI via pip
+RUN pip3 install awscli
+
+# Install ffmpeg
+RUN apt-get install -y ffmpeg
+
+# Clone the GitHub repository and ensure it's on master branch
+RUN git clone https://github.com/davidbmar/youtube_commercial_detector.git /app/youtube_commercial_detector && \
+    cd /app/youtube_commercial_detector && \
+    git checkout master
+
+# Install Python package dependencies
+RUN pip3 install pytube pytubefix whisperx
+
+# Clean up apt cache to reduce image size
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Add repository to PATH in bashrc for when users log in
+RUN echo "export PATH=\$PATH:/app/youtube_commercial_detector" >> /root/.bashrc
+
+# Create a simple entrypoint script
+RUN echo '#!/bin/bash\n\
+echo "YouTube Commercial Detector is installed in /app/youtube_commercial_detector"\n\
+echo "The directory has been added to your PATH"\n\
+# Keep the container running for RunPod\n\
+while true; do sleep 30; done' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+# Set working directory
+WORKDIR /app
+
+# Use the entrypoint script
+CMD ["/entrypoint.sh"]

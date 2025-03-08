@@ -1,0 +1,31 @@
+FROM fedirz/faster-whisper-server:latest-cuda
+
+# Set noninteractive installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update and install essential packages
+RUN apt-get update && \
+    apt-get install -y git vim python3 python3-pip sudo curl wget unzip
+
+# Create a symlink from python3 to python (CRITICAL FIX)
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# Install AWS CLI via pip
+RUN pip3 install awscli
+
+# Install ffmpeg
+RUN apt-get install -y ffmpeg
+
+# Clean up apt cache to reduce image size
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a simple entrypoint script
+RUN echo '#!/bin/bash\necho "Container started successfully!"\necho "Use runpod commands or SSH to interact with this container."\nwhile true; do sleep 30; done' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+# Set working directory
+WORKDIR /app
+
+# Use a simple command that keeps the container running
+CMD ["/entrypoint.sh"]

@@ -11,6 +11,9 @@ RUN ln -sf /usr/bin/python3 /usr/bin/python
 RUN pip3 install awscli
 # Install boto and boto3
 RUN pip3 install boto boto3
+
+# Install WhisperX
+RUN pip3 install git+https://github.com/m-bain/whisperx.git
 # Install ffmpeg
 RUN apt-get install -y ffmpeg
 # Clean up apt cache to reduce image size
@@ -21,29 +24,62 @@ RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
 # Create an entrypoint script that clones the repo, checks out master, and runs the script
 RUN echo '#!/bin/bash\n\
+# Define log file\n\
+LOG_FILE="/app/startup_log.txt"\n\
+echo "Container startup: $(date)" > $LOG_FILE\n\
+\n\
 # Start SSH service\n\
-service ssh start\n\
+echo "Starting SSH service..." >> $LOG_FILE\n\
+service ssh start && echo "SSH service started successfully" >> $LOG_FILE\n\
 \n\
 # Clone the repository\n\
-git clone https://github.com/davidbmar/youtube_commercial_detector.git /app/youtube_commercial_detector\n\
+echo "Cloning repository..." >> $LOG_FILE\n\
+git clone https://github.com/davidbmar/youtube_commercial_detector.git /app/youtube_commercial_detector && echo "Repository cloned successfully" >> $LOG_FILE\n\
 \n\
 # Go into the repo directory\n\
-cd /app/youtube_commercial_detector\n\
+cd /app/youtube_commercial_detector && echo "Changed directory to repo" >> $LOG_FILE\n\
 \n\
 # Checkout the master branch\n\
-git checkout master\n\
+echo "Checking out master branch..." >> $LOG_FILE\n\
+git checkout master && echo "Master branch checked out successfully" >> $LOG_FILE\n\
 \n\
 # Navigate to the step2-sqs-s3-download directory\n\
-cd step2-sqs-s3-download\n\
+cd step2-sqs-s3-download && echo "Changed to step2-sqs-s3-download directory" >> $LOG_FILE\n\
 \n\
-# Run the script with the specified parameters in the background\n\
+# Run the script with the specified parameters\n\
+echo "Starting scan-sqs-s3.py script..." >> $LOG_FILE\n\
 python scan-sqs-s3.py \\\n\
   --queue_url https://sqs.us-east-2.amazonaws.com/635071011057/2025-03-15-youtube-transcription-queue \\\n\
   --phrase "flea markets" \\\n\
-  --region us-east-2 &\n\
+  --region us-east-2 > /app/script_output.log 2>&1 &\n\
+\n\
+# Save the PID of the script\n\
+SCRIPT_PID=$!\n\
+echo "Script started with PID: $SCRIPT_PID" >> $LOG_FILE\n\
+\n\
+# Check if script is running after a few seconds\n\
+sleep 5\n\
+if ps -p $SCRIPT_PID > /dev/null; then\n\
+  echo "Script is running successfully as of $(date)" >> $LOG_FILE\n\
+else\n\
+  echo "ERROR: Script failed to start or exited quickly" >> $LOG_FILE\n\
+  # Capture any error output\n\
+  echo "Last few lines of script output:" >> $LOG_FILE\n\
+  tail -n 20 /app/script_output.log >> $LOG_FILE\n\
+fi\n\
+\n\
+echo "Startup process completed at $(date)" >> $LOG_FILE\n\
 \n\
 # Keep the container running\n\
-while true; do sleep 30; done' > /entrypoint.sh && \
+while true; do\n\
+  # Check if script is still running every 5 minutes and log status\n\
+  if ! ps -p $SCRIPT_PID > /dev/null; then\n\
+    echo "WARNING: Script process ($SCRIPT_PID) no longer running at $(date)" >> $LOG_FILE\n\
+    echo "Last 50 lines of script output:" >> $LOG_FILE\n\
+    tail -n 50 /app/script_output.log >> $LOG_FILE\n\
+  fi\n\
+  sleep 300\n\
+done' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 # Expose SSH port
 EXPOSE 22

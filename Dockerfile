@@ -11,11 +11,25 @@ RUN ln -sf /usr/bin/python3 /usr/bin/python
 RUN pip3 install awscli
 # Install boto, boto3, and pytubefix
 RUN pip3 install boto boto3 pytubefix
-
 # Install WhisperX
 RUN pip3 install git+https://github.com/m-bain/whisperx.git
 # Install ffmpeg
 RUN apt-get install -y ffmpeg
+
+# Install Node.js using nvm
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash && \
+    export NVM_DIR="$HOME/.nvm" && \
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && \
+    nvm install --lts && \
+    nvm use --lts && \
+    # Add nvm to bash profile for persistence
+    echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc && \
+    echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc && \
+    echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.bashrc
+
+# Add node and npm to PATH
+ENV PATH="/root/.nvm/versions/node/$(ls -t /root/.nvm/versions/node/ | head -1)/bin:${PATH}"
+
 # Clean up apt cache to reduce image size
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -31,6 +45,14 @@ echo "Container startup: $(date)" > $LOG_FILE\n\
 # Start SSH service\n\
 echo "Starting SSH service..." >> $LOG_FILE\n\
 service ssh start && echo "SSH service started successfully" >> $LOG_FILE\n\
+\n\
+# Ensure nvm is available\n\
+export NVM_DIR="$HOME/.nvm"\n\
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"\n\
+\n\
+# Verify Node.js installation\n\
+node -v >> $LOG_FILE 2>&1\n\
+npm -v >> $LOG_FILE 2>&1\n\
 \n\
 # Clone the repository\n\
 echo "Cloning repository..." >> $LOG_FILE\n\

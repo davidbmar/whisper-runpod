@@ -9,8 +9,8 @@ RUN apt-get update && \
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 # Install AWS CLI via pip
 RUN pip3 install awscli
-# Install boto and boto3
-RUN pip3 install boto boto3
+# Install boto, boto3, and pytubefix
+RUN pip3 install boto boto3 pytubefix
 
 # Install WhisperX
 RUN pip3 install git+https://github.com/m-bain/whisperx.git

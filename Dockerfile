@@ -30,6 +30,20 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | b
 # Add node and npm to PATH
 ENV PATH="/root/.nvm/versions/node/$(ls -t /root/.nvm/versions/node/ | head -1)/bin:${PATH}"
 
+# Install innertube npm package for PyTubeFix botGuard functionality
+RUN export NVM_DIR="$HOME/.nvm" && \
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && \
+    npm install -g innertube && \
+    mkdir -p /app/js && \
+    echo 'const { Innertube } = require("innertube"); async function createPoToken() { const yt = await Innertube.create(); const poToken = await yt.session.player.generatePoToken(); return poToken; } module.exports = { createPoToken };' > /app/js/botguard.js
+
+# Set environment variables for PyTubeFix to find Node.js
+ENV PYTUBE_JS_PATH="/app/js/botguard.js"
+ENV NODE_PATH="/root/.nvm/versions/node/$(ls -t /root/.nvm/versions/node/ | head -1)/lib/node_modules"
+
+# Install yt-dlp as an alternative download option
+RUN pip3 install yt-dlp
+
 # Clean up apt cache to reduce image size
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/*

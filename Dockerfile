@@ -25,10 +25,10 @@ RUN apt-get update && \
     apt-get update && \
     apt-get install -y nodejs
 
-# Install innertube npm package for PyTubeFix botGuard functionality
-RUN npm install -g innertube && \
+# Install youtubei.js package (correct package for YouTube API interactions)
+RUN npm install -g youtubei.js && \
     mkdir -p /app/js && \
-    echo 'const { Innertube } = require("innertube"); async function createPoToken() { const yt = await Innertube.create(); const poToken = await yt.session.player.generatePoToken(); return poToken; } module.exports = { createPoToken };' > /app/js/botguard.js
+    echo 'const { Innertube } = require("youtubei.js"); async function createPoToken() { try { const yt = await Innertube.create(); const poToken = await yt.session.player.generatePoToken(); return poToken; } catch(e) { console.error(e); return null; } } module.exports = { createPoToken };' > /app/js/botguard.js
 
 # Set environment variables for PyTubeFix to find Node.js
 ENV PYTUBE_JS_PATH="/app/js/botguard.js"

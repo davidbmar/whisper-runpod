@@ -16,30 +16,23 @@ RUN pip3 install git+https://github.com/m-bain/whisperx.git
 # Install ffmpeg
 RUN apt-get install -y ffmpeg
 
-# Install Node.js using nvm
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash && \
-    export NVM_DIR="$HOME/.nvm" && \
-    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && \
-    nvm install --lts && \
-    nvm use --lts && \
-    # Add nvm to bash profile for persistence
-    echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc && \
-    echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc && \
-    echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.bashrc
-
-# Add node and npm to PATH
-ENV PATH="/root/.nvm/versions/node/$(ls -t /root/.nvm/versions/node/ | head -1)/bin:${PATH}"
+# Install Node.js directly using apt instead of nvm
+RUN apt-get update && \
+    apt-get install -y ca-certificates curl gnupg && \
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && \
+    apt-get install -y nodejs
 
 # Install innertube npm package for PyTubeFix botGuard functionality
-RUN export NVM_DIR="$HOME/.nvm" && \
-    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && \
-    npm install -g innertube && \
+RUN npm install -g innertube && \
     mkdir -p /app/js && \
     echo 'const { Innertube } = require("innertube"); async function createPoToken() { const yt = await Innertube.create(); const poToken = await yt.session.player.generatePoToken(); return poToken; } module.exports = { createPoToken };' > /app/js/botguard.js
 
 # Set environment variables for PyTubeFix to find Node.js
 ENV PYTUBE_JS_PATH="/app/js/botguard.js"
-ENV NODE_PATH="/root/.nvm/versions/node/$(ls -t /root/.nvm/versions/node/ | head -1)/lib/node_modules"
+ENV NODE_PATH="/usr/lib/node_modules"
 
 # Install yt-dlp as an alternative download option
 RUN pip3 install yt-dlp

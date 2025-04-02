@@ -1,118 +1,64 @@
+# Faster Whisper Transcription Service
+# Based on fedirz/faster-whisper-server with additional tools
+
 FROM fedirz/faster-whisper-server:latest-cuda
-# Set noninteractive installation
-ENV DEBIAN_FRONTEND=noninteractive
-# Update and install essential packages including SSH server
-RUN apt-get update && \
-    apt-get install -y git vim python3 python3-pip sudo curl wget unzip openssh-server net-tools && \
-    mkdir -p /var/run/sshd
-# Create a symlink from python3 to python (CRITICAL FIX)
-RUN ln -sf /usr/bin/python3 /usr/bin/python
-# Install AWS CLI via pip
-RUN pip3 install awscli
-# Install boto, boto3, and pytubefix
-RUN pip3 install boto boto3 pytubefix
-# Install WhisperX
-RUN pip3 install git+https://github.com/m-bain/whisperx.git
-# Install ffmpeg
-RUN apt-get install -y ffmpeg
 
-# Install Node.js directly using apt instead of nvm
-RUN apt-get update && \
-    apt-get install -y ca-certificates curl gnupg && \
-    mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
-    apt-get update && \
-    apt-get install -y nodejs
+LABEL maintainer="Your Name <your.email@example.com>"
+LABEL description="Enhanced Faster Whisper server with S3 integration and monitoring"
+LABEL version="1.0"
 
-# Install youtubei.js package (correct package for YouTube API interactions)
-RUN npm install -g youtubei.js && \
-    mkdir -p /app/js && \
-    echo 'const { Innertube } = require("youtubei.js"); async function createPoToken() { try { const yt = await Innertube.create(); const poToken = await yt.session.player.generatePoToken(); return poToken; } catch(e) { console.error(e); return null; } } module.exports = { createPoToken };' > /app/js/botguard.js
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    vim \
+    wget \
+    unzip \
+    ffmpeg \
+    python3-pip \
+    jq \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set environment variables for PyTubeFix to find Node.js
-ENV PYTUBE_JS_PATH="/app/js/botguard.js"
-ENV NODE_PATH="/usr/lib/node_modules"
+# Install AWS CLI v2
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip awscliv2.zip \
+    && ./aws/install \
+    && rm -rf aws awscliv2.zip
 
-# Install yt-dlp as an alternative download option
-RUN pip3 install yt-dlp
+# Install Python dependencies
+RUN pip3 install --no-cache-dir \
+    boto3 \
+    requests \
+    pyyaml \
+    faster-whisper \
+    torch \
+    urllib3 \
+    botocore \
+    soundfile
 
-# Clean up apt cache to reduce image size
-RUN apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-# Ensure SSH is properly configured for RunPod
-RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-# Create an entrypoint script that clones the repo, checks out master, and runs the script
-RUN echo '#!/bin/bash\n\
-# Define log file\n\
-LOG_FILE="/app/startup_log.txt"\n\
-echo "Container startup: $(date)" > $LOG_FILE\n\
-\n\
-# Start SSH service\n\
-echo "Starting SSH service..." >> $LOG_FILE\n\
-service ssh start && echo "SSH service started successfully" >> $LOG_FILE\n\
-\n\
-# Ensure nvm is available\n\
-export NVM_DIR="$HOME/.nvm"\n\
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"\n\
-\n\
-# Verify Node.js installation\n\
-node -v >> $LOG_FILE 2>&1\n\
-npm -v >> $LOG_FILE 2>&1\n\
-\n\
-# Clone the repository\n\
-echo "Cloning repository..." >> $LOG_FILE\n\
-git clone https://github.com/davidbmar/youtube_commercial_detector.git /app/youtube_commercial_detector && echo "Repository cloned successfully" >> $LOG_FILE\n\
-\n\
-# Go into the repo directory\n\
-cd /app/youtube_commercial_detector && echo "Changed directory to repo" >> $LOG_FILE\n\
-\n\
-# Checkout the master branch\n\
-echo "Checking out master branch..." >> $LOG_FILE\n\
-git checkout master && echo "Master branch checked out successfully" >> $LOG_FILE\n\
-\n\
-# Navigate to the step2-sqs-s3-download directory\n\
-cd step2-sqs-s3-download && echo "Changed to step2-sqs-s3-download directory" >> $LOG_FILE\n\
-\n\
-# Run the script with the specified parameters\n\
-echo "Starting scan-sqs-s3.py script..." >> $LOG_FILE\n\
-python scan-sqs-s3.py \\\n\
-  --queue_url https://sqs.us-east-2.amazonaws.com/635071011057/2025-03-15-youtube-transcription-queue \\\n\
-  --phrase "flea markets" \\\n\
-  --region us-east-2 > /app/script_output.log 2>&1 &\n\
-\n\
-# Save the PID of the script\n\
-SCRIPT_PID=$!\n\
-echo "Script started with PID: $SCRIPT_PID" >> $LOG_FILE\n\
-\n\
-# Check if script is running after a few seconds\n\
-sleep 5\n\
-if ps -p $SCRIPT_PID > /dev/null; then\n\
-  echo "Script is running successfully as of $(date)" >> $LOG_FILE\n\
-else\n\
-  echo "ERROR: Script failed to start or exited quickly" >> $LOG_FILE\n\
-  # Capture any error output\n\
-  echo "Last few lines of script output:" >> $LOG_FILE\n\
-  tail -n 20 /app/script_output.log >> $LOG_FILE\n\
-fi\n\
-\n\
-echo "Startup process completed at $(date)" >> $LOG_FILE\n\
-\n\
-# Keep the container running\n\
-while true; do\n\
-  # Check if script is still running every 5 minutes and log status\n\
-  if ! ps -p $SCRIPT_PID > /dev/null; then\n\
-    echo "WARNING: Script process ($SCRIPT_PID) no longer running at $(date)" >> $LOG_FILE\n\
-    echo "Last 50 lines of script output:" >> $LOG_FILE\n\
-    tail -n 50 /app/script_output.log >> $LOG_FILE\n\
-  fi\n\
-  sleep 300\n\
-done' > /entrypoint.sh && \
-    chmod +x /entrypoint.sh
-# Expose SSH port
-EXPOSE 22
+# Create directories
+RUN mkdir -p /app /opt/custom_scripts /var/log
+
+# Copy application files
+COPY entrypoint.sh /app/
+COPY transcribe_from_s3.sh /app/
+
+# Make scripts executable
+RUN chmod +x /app/entrypoint.sh /app/transcribe_from_s3.sh
+
+# Create a symbolic link to make scripts available in PATH
+RUN ln -sf /app/transcribe_from_s3.sh /usr/local/bin/transcribe_from_s3
+
+# Set up custom scripts directory for user scripts
+RUN echo '#!/bin/bash\necho "This is a sample custom script that runs on container startup"\necho "Replace this with your own scripts by mounting a volume to /opt/custom_scripts"' > /opt/custom_scripts/example.sh \
+    && chmod +x /opt/custom_scripts/example.sh
+
+# Expose the API port
+EXPOSE 8000
+
 # Set working directory
 WORKDIR /app
-# Use the entrypoint script
-CMD ["/entrypoint.sh"]
+
+# Set entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
